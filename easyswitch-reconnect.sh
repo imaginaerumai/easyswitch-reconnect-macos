@@ -6,6 +6,8 @@
 #   easyswitch-reconnect.sh --watch    soft reconnect only (used by the LaunchAgent)
 #   easyswitch-reconnect.sh --refresh  manual: disconnect + reconnect connected devices
 #                                      (clears input lag; never run automatically)
+#   easyswitch-reconnect.sh --bt-cycle manual: turn Bluetooth off and on
+#                                      (same as the Control Center toggle)
 CONF="$HOME/.config/easyswitch-reconnect/devices"
 BU="$(command -v blueutil || echo /opt/homebrew/bin/blueutil)"
 [[ -x "$BU" ]] || { echo "blueutil not found" >&2; exit 1; }
@@ -13,6 +15,11 @@ BU="$(command -v blueutil || echo /opt/homebrew/bin/blueutil)"
 DEVS=(${(f)"$(grep -Eo '^[0-9a-fA-F]{2}([-:][0-9a-fA-F]{2}){5}' "$CONF")"})
 (( ${#DEVS} )) || exit 0
 connected() { [[ "$($BU --is-connected $1)" == 1 ]]; }
+
+if [[ "$1" == --bt-cycle ]]; then
+  $BU --power 0; sleep 2; $BU --power 1
+  exit 0
+fi
 
 if [[ "$1" == --refresh ]]; then
   for d in $DEVS; do

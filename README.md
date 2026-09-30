@@ -81,7 +81,10 @@ Create a script command or hotkey that runs `~/.local/bin/easyswitch-reconnect.s
 - Check the agent is loaded: `launchctl print gui/$(id -u)/com.easyswitch-reconnect`
 - See what's connected: `blueutil --connected`
 - Input lags after switching back: run `~/.local/bin/easyswitch-reconnect.sh --refresh`
-  (you can bind it to a second hotkey).
+  (you can bind it to a second hotkey). If that doesn't help, run
+  `~/.local/bin/easyswitch-reconnect.sh --bt-cycle`, which turns Bluetooth off
+  and on (same as the Control Center toggle; other devices like AirPods drop
+  briefly).
 - If a device never reconnects, remove it in System Settings → Bluetooth
   (Forget), pair it again, and run `./install.sh` again (the address may change).
 
