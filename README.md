@@ -25,7 +25,12 @@ explanation.
 - A **manual command** does the same and, if the devices still aren't back after
   2 seconds, turns Bluetooth off and on. You can bind it to a hotkey.
 
-Result: switch back to the Mac and the devices reconnect within a few seconds.
+- **Lag fix:** after a Mac-initiated reconnect, typing/pointer input can lag.
+  Dropping the link once and reconnecting clears it, so after each successful
+  reconnect the script disconnects and reconnects the device one more time
+  (about 3 extra seconds). To turn this off, set `EASYSWITCH_NO_REFRESH=1`.
+
+Result: switch back to the Mac and the devices reconnect, lag-free, within a few seconds.
 
 ## Requirements
 
@@ -73,6 +78,9 @@ Create a script command or hotkey that runs `~/.local/bin/easyswitch-reconnect.s
 - Check the log: `cat /tmp/easyswitch-reconnect.err`
 - Check the agent is loaded: `launchctl print gui/$(id -u)/com.easyswitch-reconnect`
 - See what's connected: `blueutil --connected`
+- Input lags after switching back: run
+  `blueutil --disconnect <addr>; sleep 2; blueutil --connect <addr>`. The script
+  does this automatically unless `EASYSWITCH_NO_REFRESH` is set.
 - If a device never reconnects, remove it in System Settings → Bluetooth
   (Forget), pair it again, and run `./install.sh` again (the address may change).
 

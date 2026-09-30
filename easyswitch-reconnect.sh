@@ -4,6 +4,10 @@
 #
 #   easyswitch-reconnect.sh           reconnect; power-cycle Bluetooth if that fails
 #   easyswitch-reconnect.sh --watch   soft reconnect only (used by the LaunchAgent)
+#
+# After a Mac-initiated reconnect, input can lag. Dropping the link once and
+# reconnecting fixes it, so every successful reconnect is followed by one
+# disconnect/connect "refresh". Set EASYSWITCH_NO_REFRESH=1 to skip it.
 CONF="$HOME/.config/easyswitch-reconnect/devices"
 BU="$(command -v blueutil || echo /opt/homebrew/bin/blueutil)"
 [[ -x "$BU" ]] || { echo "blueutil not found" >&2; exit 1; }
@@ -11,15 +15,29 @@ BU="$(command -v blueutil || echo /opt/homebrew/bin/blueutil)"
 DEVS=(${(f)"$(grep -Eo '^[0-9a-fA-F]{2}([-:][0-9a-fA-F]{2}){5}' "$CONF")"})
 (( ${#DEVS} )) || exit 0
 
+connected() { [[ "$($BU --is-connected $1)" == 1 ]]; }
+
+refresh() {   # drop and re-establish a fresh link to clear input lag
+  [[ -n "$EASYSWITCH_NO_REFRESH" ]] && return
+  sleep 1
+  $BU --disconnect $1 >/dev/null 2>&1
+  sleep 2
+  $BU --connect $1 >/dev/null 2>&1
+}
+
 missing=()
-for d in $DEVS; do [[ "$($BU --is-connected $d)" == 1 ]] || missing+=$d; done
+for d in $DEVS; do connected $d || missing+=$d; done
 (( ${#missing} == 0 )) && exit 0
-for d in $missing; do $BU --connect $d >/dev/null 2>&1; done
+
+for d in $missing; do
+  $BU --connect $d >/dev/null 2>&1
+  connected $d && refresh $d
+done
 [[ "$1" == --watch ]] && exit 0
 
 sleep 2
 for d in $DEVS; do
-  if [[ "$($BU --is-connected $d)" != 1 ]]; then
+  if ! connected $d; then
     $BU --power 0; sleep 1; $BU --power 1
     exit 0
   fi
