@@ -18,21 +18,52 @@ explanation.
 
 ## How it works
 
-- A **LaunchAgent** runs every 5 seconds. If a selected device isn't connected,
-  it asks macOS to connect to it (`blueutil --connect`). It **never** turns
-  Bluetooth off, so your other devices (AirPods etc.) aren't affected. While the
-  device is on another host, the attempt just fails quietly.
-- A **manual command** does the same and, if the devices still aren't back after
-  2 seconds, turns Bluetooth off and on. You can bind it to a hotkey.
+- A **LaunchAgent** checks every 5 seconds whether your selected devices are
+  connected. That check only asks macOS for the device's current status.
+- If a device is missing, it asks macOS to connect to it (`blueutil --connect`),
+  but **rate-limited**:
+  - each attempt is stopped after 4 seconds,
+  - after a failed attempt it waits 10s, then 20s, then at most every 30s,
+  - only one copy runs at a time, so attempts can't pile up,
+  - as soon as the device is connected again, the backoff resets.
+- The background check **never** turns Bluetooth off.
+- A **manual command** (bind it to a hotkey) reconnects immediately, resets the
+  backoff, and turns Bluetooth off and on if the devices still aren't back after
+  2 seconds.
 
-- **Input lag (manual only):** after a Mac-initiated reconnect, input can
-  sometimes lag. Run `easyswitch-reconnect.sh --refresh` to drop and re-establish
-  the link. This is deliberately **not** automatic: when an earlier version ran it
-  on every reconnect, the Mac later could not reconnect or even re-pair the
-  devices, and recovery required clearing macOS Bluetooth databases. The cause
-  was not confirmed, but it is not worth the risk.
+Result: switch back to the Mac and the devices reconnect within about 30 seconds
+at most, or instantly with the hotkey.
 
-Result: switch back to the Mac and the devices reconnect within a few seconds.
+### Why the rate limiting (audio stutter)
+
+While a keyboard or mouse is on another host, every connect attempt makes the
+Mac's Bluetooth radio look for it. The first version retried every 5 seconds
+with no time limit on an attempt, and while it ran, the author's AirPods audio
+started stuttering. We believe the retries were the cause, but this was not
+proven. The current version limits how often and how long it tries.
+
+**It has not yet been confirmed that this removes the stutter.** If you hear
+audio dropouts, raise the limit (e.g. `BACKOFF_MAX=120 ./install.sh`), or turn
+the background check off and use only the hotkey:
+
+```bash
+launchctl bootout gui/$(id -u)/com.easyswitch-reconnect
+rm ~/Library/LaunchAgents/com.easyswitch-reconnect.plist
+```
+
+### Input lag (manual only)
+
+After a Mac-initiated reconnect, input can sometimes lag. Options, safest first:
+
+1. Turn the keyboard/mouse off and on with its power switch.
+2. `easyswitch-reconnect.sh --refresh`: disconnects and reconnects the device.
+3. `easyswitch-reconnect.sh --bt-cycle`: turns Bluetooth off and on (other
+   devices like AirPods drop briefly).
+
+These are deliberately **not** automatic: when an earlier version refreshed the
+link on every reconnect, the Mac later could not reconnect or even re-pair the
+devices, and recovery required clearing macOS Bluetooth databases. The cause was
+not confirmed, but it is not worth the risk.
 
 ## Requirements
 
@@ -51,7 +82,15 @@ The installer lists your paired Bluetooth devices. Type the numbers of your
 keyboard/mouse. They are saved to `~/.config/easyswitch-reconnect/devices`
 (one MAC address per line, and you can edit this file later).
 
-Optional: change the check interval, e.g. `INTERVAL=3 ./install.sh`.
+Optional settings (pass them to the installer):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `INTERVAL` | `5` | seconds between status checks |
+| `BACKOFF_MAX` | `30` | longest wait between connect attempts for a missing device |
+| `CONNECT_TIMEOUT` | `4` | seconds before a single connect attempt is stopped |
+
+Example: `BACKOFF_MAX=60 ./install.sh`
 
 On first run macOS may ask for Bluetooth permission. Allow it.
 
@@ -77,14 +116,12 @@ Create a script command or hotkey that runs `~/.local/bin/easyswitch-reconnect.s
 
 ## Troubleshooting
 
-- Check the log: `cat /tmp/easyswitch-reconnect.err`
+- Check the log: `cat /tmp/easyswitch-reconnect.err` (connect attempts and reconnects)
+- See devices and backoff: `~/.local/bin/easyswitch-reconnect.sh --status`
 - Check the agent is loaded: `launchctl print gui/$(id -u)/com.easyswitch-reconnect`
 - See what's connected: `blueutil --connected`
-- Input lags after switching back: run `~/.local/bin/easyswitch-reconnect.sh --refresh`
-  (you can bind it to a second hotkey). If that doesn't help, run
-  `~/.local/bin/easyswitch-reconnect.sh --bt-cycle`, which turns Bluetooth off
-  and on (same as the Control Center toggle; other devices like AirPods drop
-  briefly).
+- Input lags after switching back: see [Input lag](#input-lag-manual-only).
+- AirPods or other audio stutters: see [Why the rate limiting](#why-the-rate-limiting-audio-stutter).
 - If a device never reconnects, remove it in System Settings → Bluetooth
   (Forget), pair it again, and run `./install.sh` again (the address may change).
 
