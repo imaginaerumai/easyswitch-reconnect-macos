@@ -42,6 +42,13 @@ with no time limit on an attempt, and while it ran, the author's AirPods audio
 started stuttering. We believe the retries were the cause, but this was not
 proven. The current version limits how often and how long it tries.
 
+A second bug made this much worse: `blueutil --is-connected` can return `0` for a
+Bluetooth LE device that is connected and working (seen with an MX Master 3,
+which still appeared in `blueutil --connected`). Earlier versions relied on
+`--is-connected`, so they kept calling `--connect` on devices that were already
+connected. The script now treats a device as connected if it appears in
+`blueutil --connected` or `--is-connected` says so.
+
 **It has not yet been confirmed that this removes the stutter.** If you hear
 audio dropouts, raise the limit (e.g. `BACKOFF_MAX=120 ./install.sh`), or turn
 the background check off and use only the hotkey:

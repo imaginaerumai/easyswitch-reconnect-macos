@@ -40,7 +40,16 @@ DEVS=(${(f)"$(grep -Eo '^[0-9a-fA-F]{2}([-:][0-9a-fA-F]{2}){5}' "$CONF")"})
 mkdir -p "$STATE"
 
 log() { print -r -- "$(strftime '%Y-%m-%d %H:%M:%S' $EPOCHSECONDS) $*" >&2; }
-connected() { [[ "$("$BU" --is-connected $1 2>/dev/null)" == 1 ]]; }
+# A device counts as connected if it is in `blueutil --connected` OR
+# `--is-connected` says so. `--is-connected` alone is not reliable: for some
+# Bluetooth LE devices (seen with an MX Master 3) it returns 0 while the device
+# is connected and working, which made earlier versions keep calling --connect
+# on a device that was already connected.
+connected() {
+  local addr="${${(L)1}//:/-}"
+  "$BU" --connected 2>/dev/null | grep -qi "^address: $addr," && return 0
+  [[ "$("$BU" --is-connected $1 2>/dev/null)" == 1 ]]
+}
 state_file() { print -r -- "$STATE/${1//:/-}"; }
 
 # Run a command, killing it if it takes longer than $1 seconds.
