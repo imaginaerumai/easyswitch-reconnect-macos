@@ -6,7 +6,7 @@ BIN="$HOME/.local/bin/easyswitch-reconnect.sh"
 CONF_DIR="$HOME/.config/easyswitch-reconnect"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 INTERVAL="${INTERVAL:-5}"
-CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-4}"
+CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-15}"
 BACKOFF_MAX="${BACKOFF_MAX:-30}"
 HERE="${0:A:h}"
 

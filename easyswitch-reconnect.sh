@@ -21,7 +21,7 @@
 #   * backs off per device: 10s, 20s, 40s ... up to EASYSWITCH_BACKOFF_MAX.
 #
 # Settings (environment variables, set in the LaunchAgent by install.sh):
-#   EASYSWITCH_CONNECT_TIMEOUT  max seconds per connect attempt   (default 4)
+#   EASYSWITCH_CONNECT_TIMEOUT  max seconds per connect attempt   (default 15)
 #   EASYSWITCH_BACKOFF_BASE     first retry delay in seconds      (default 10)
 #   EASYSWITCH_BACKOFF_MAX      longest retry delay in seconds    (default 30)
 zmodload zsh/datetime
@@ -29,7 +29,7 @@ zmodload zsh/datetime
 CONF="${EASYSWITCH_CONFIG:-$HOME/.config/easyswitch-reconnect/devices}"
 STATE="${EASYSWITCH_STATE_DIR:-$HOME/Library/Caches/easyswitch-reconnect}"
 BU="${EASYSWITCH_BLUEUTIL:-$(command -v blueutil || echo /opt/homebrew/bin/blueutil)}"
-CONNECT_TIMEOUT="${EASYSWITCH_CONNECT_TIMEOUT:-4}"
+CONNECT_TIMEOUT="${EASYSWITCH_CONNECT_TIMEOUT:-15}"
 BACKOFF_BASE="${EASYSWITCH_BACKOFF_BASE:-10}"
 BACKOFF_MAX="${EASYSWITCH_BACKOFF_MAX:-30}"
 
@@ -68,7 +68,15 @@ run_with_timeout() {
   wait $pid 2>/dev/null
 }
 
-try_connect() { run_with_timeout "$CONNECT_TIMEOUT" "$BU" --connect $1; connected $1; }
+# Sets LAST_ATTEMPT to a short description for the log.
+try_connect() {
+  local start=$EPOCHREALTIME rc
+  run_with_timeout "$CONNECT_TIMEOUT" "$BU" --connect $1; rc=$?
+  if (( rc == 124 )); then LAST_ATTEMPT="stopped at ${CONNECT_TIMEOUT}s limit"
+  else LAST_ATTEMPT="blueutil gave up after $(printf '%.1f' $(( EPOCHREALTIME - start )))s"
+  fi
+  connected $1
+}
 
 # Only one instance at a time, so attempts can never pile up.
 LOCK="$STATE/lock"
@@ -130,7 +138,7 @@ case "$1" in
       delay=$(( BACKOFF_BASE << shift_by ))
       (( delay > BACKOFF_MAX )) && delay=$BACKOFF_MAX
       print "$fails $(( now + delay ))" > "$sf"
-      (( fails <= 5 )) && log "$d not reachable (attempt $fails), next try in ${delay}s"
+      (( fails <= 5 )) && log "$d not reachable (attempt $fails, $LAST_ATTEMPT), next try in ${delay}s"
     done
     exit 0 ;;
 

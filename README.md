@@ -22,7 +22,7 @@ explanation.
   connected. That check only asks macOS for the device's current status.
 - If a device is missing, it asks macOS to connect to it (`blueutil --connect`),
   but **rate-limited**:
-  - each attempt is stopped after 4 seconds,
+  - each attempt is stopped after 15 seconds,
   - after a failed attempt it waits 10s, then 20s, then at most every 30s,
   - only one copy runs at a time, so attempts can't pile up,
   - as soon as the device is connected again, the backoff resets.
@@ -95,11 +95,25 @@ Optional settings (pass them to the installer):
 |---|---|---|
 | `INTERVAL` | `5` | seconds between status checks |
 | `BACKOFF_MAX` | `30` | longest wait between connect attempts for a missing device |
-| `CONNECT_TIMEOUT` | `4` | seconds before a single connect attempt is stopped |
+| `CONNECT_TIMEOUT` | `15` | seconds before a single connect attempt is stopped (4s was too short: the keyboard never reconnected) |
 
 Example: `BACKOFF_MAX=60 ./install.sh`
 
 On first run macOS may ask for Bluetooth permission. Allow it.
+
+## SwitchIT: turn the background check on and off
+
+A tiny Mac app with two buttons, **Enable** and **Disable**. Only the button that
+applies is clickable, and it shows whether auto-reconnect is ON or OFF.
+
+```bash
+./switchit/build.sh        # builds ~/Applications/SwitchIT.app (needs swiftc)
+```
+
+- **Disable** unloads the background check and keeps it off after a restart.
+- **Enable** turns it back on.
+- The app is built and ad-hoc signed on your own Mac. On the author's Mac it opened
+  without any security prompt.
 
 ## Bind the manual reconnect to a key
 
