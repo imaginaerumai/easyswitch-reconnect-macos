@@ -80,6 +80,14 @@ try_connect() {
 
 # Only one instance at a time, so attempts can never pile up.
 LOCK="$STATE/lock"
+LOCK_OWNED=0
+cleanup_lock() { (( LOCK_OWNED )) && rm -rf "$LOCK"; }
+# NOTE: the trap must live at script scope. zsh fires `trap … EXIT` on
+# *function* exit if the trap is installed inside a function, so an earlier
+# `trap 'rm -rf "$LOCK"' EXIT` set inside take_lock() released the lock as
+# soon as take_lock returned, letting concurrent manual --watch invocations
+# race through the body.
+trap cleanup_lock EXIT INT TERM
 take_lock() {
   if ! mkdir "$LOCK" 2>/dev/null; then
     local pid; pid="$(<"$LOCK/pid" 2>/dev/null)"
@@ -87,7 +95,7 @@ take_lock() {
     rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || return 1   # stale lock
   fi
   print $$ > "$LOCK/pid"
-  trap 'rm -rf "$LOCK"' EXIT
+  LOCK_OWNED=1
 }
 
 case "$1" in
