@@ -8,6 +8,9 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 INTERVAL="${INTERVAL:-5}"
 CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-15}"
 BACKOFF_MAX="${BACKOFF_MAX:-30}"
+AUTO_BT_CYCLE_AFTER="${AUTO_BT_CYCLE_AFTER:-2}"
+BT_CYCLE_COOLDOWN="${BT_CYCLE_COOLDOWN:-60}"
+RECENT_SEEN_WINDOW="${RECENT_SEEN_WINDOW:-900}"
 HERE="${0:A:h}"
 
 command -v brew >/dev/null || { echo "Homebrew is required: https://brew.sh"; exit 1; }
@@ -48,6 +51,9 @@ cat > "$PLIST" <<PL
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>EASYSWITCH_CONNECT_TIMEOUT</key><string>$CONNECT_TIMEOUT</string>
     <key>EASYSWITCH_BACKOFF_MAX</key><string>$BACKOFF_MAX</string>
+    <key>EASYSWITCH_AUTO_BT_CYCLE_AFTER</key><string>$AUTO_BT_CYCLE_AFTER</string>
+    <key>EASYSWITCH_BT_CYCLE_COOLDOWN</key><string>$BT_CYCLE_COOLDOWN</string>
+    <key>EASYSWITCH_RECENT_SEEN_WINDOW</key><string>$RECENT_SEEN_WINDOW</string>
   </dict>
   <key>StartInterval</key><integer>$INTERVAL</integer>
   <key>StandardErrorPath</key><string>/tmp/easyswitch-reconnect.err</string>
@@ -59,5 +65,12 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST"
 echo
 echo "Installed. Background check runs every ${INTERVAL}s; missing devices are retried"
 echo "after 10s, 20s, then at most every ${BACKOFF_MAX}s (each attempt capped at ${CONNECT_TIMEOUT}s)."
+if (( AUTO_BT_CYCLE_AFTER > 0 )); then
+  echo "Firm-fix fallback: after ${AUTO_BT_CYCLE_AFTER} failed per-device attempts on a device"
+  echo "last seen within ${RECENT_SEEN_WINDOW}s, Bluetooth is power-cycled automatically"
+  echo "(at most once every ${BT_CYCLE_COOLDOWN}s)."
+else
+  echo "Automatic Bluetooth power cycle is DISABLED (AUTO_BT_CYCLE_AFTER=0)."
+fi
 echo "Manual reconnect (with Bluetooth reset fallback): $BIN"
 echo "See README for binding it to a hotkey."

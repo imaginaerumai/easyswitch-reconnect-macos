@@ -9,12 +9,16 @@ computer. It should also work with any multi-host Bluetooth keyboard or mouse.
 
 You press Easy-Switch to move your keyboard/mouse to another device (e.g. Apple
 Vision Pro on channel 2). When you switch back to the Mac (channel 1), the LED
-blinks slowly and nothing connects. The only fix is turning Bluetooth off and on
-on the Mac.
+blinks slowly and nothing connects. The only reliable manual fix is turning
+Bluetooth off and on on the Mac.
 
-It looks like macOS doesn't reconnect when the device comes back, so the device
-keeps searching. This is our observation, not a documented Apple or Logitech
-explanation.
+What appears to happen: when the keyboard channels away, macOS loses the HCI
+link but `bluetoothd` keeps stale state for the bonded device. When the
+keyboard comes back on the same channel, `bluetoothd` won't resume paging and
+`blueutil --connect` can keep timing out — no amount of retrying with
+`--connect` recovers the stuck state. A `blueutil --power 0 / --power 1`
+cycle tears the stack down and rebuilds it, which is what works. This is our
+observation, not a documented Apple or Logitech explanation.
 
 ## How it works
 
@@ -26,13 +30,24 @@ explanation.
   - after a failed attempt it waits 10s, then 20s, then at most every 30s,
   - only one copy runs at a time, so attempts can't pile up,
   - as soon as the device is connected again, the backoff resets.
-- The background check **never** turns Bluetooth off.
+- **Firm fix for the Easy-Switch stuck state (the main thing this repo is for):**
+  if `--connect` fails twice in a row on a device that was connected to the Mac
+  recently (within the last 15 minutes by default), the watcher automatically
+  power-cycles Bluetooth once. This matches the manual "toggle Bluetooth off and
+  on" workaround, but you don't have to do it yourself. To avoid thrashing
+  other Bluetooth devices (AirPods etc.) for keyboards that are simply out of
+  range, the cycle:
+  - only runs when the device was seen connected within
+    `EASYSWITCH_RECENT_SEEN_WINDOW` seconds (default 900), and
+  - runs at most once per `EASYSWITCH_BT_CYCLE_COOLDOWN` seconds (default 60).
 - A **manual command** (bind it to a hotkey) reconnects immediately, resets the
   backoff, and turns Bluetooth off and on if the devices still aren't back after
   2 seconds.
 
-Result: switch back to the Mac and the devices reconnect within about 30 seconds
-at most, or instantly with the hotkey.
+Result: switch back to the Mac and the devices reconnect in under a minute
+automatically — typically within one `--connect` attempt (a few seconds), and at
+worst after one automatic Bluetooth power cycle (around 30–45 seconds). Still
+instant with the hotkey.
 
 ### Why the rate limiting (audio stutter)
 
@@ -42,8 +57,8 @@ with no time limit on an attempt, and while it ran, the author's AirPods audio
 started stuttering. We believe the retries were the cause, but this was not
 proven. The current version limits how often and how long it tries.
 
-A second bug made this much worse: `blueutil --is-connected` can return `0` for a
-Bluetooth LE device that is connected and working (seen with an MX Master 3,
+A second bug made this much worse: `blueutil --is-connected` can return `0` for
+a Bluetooth LE device that is connected and working (seen with an MX Master 3,
 which still appeared in `blueutil --connected`). Earlier versions relied on
 `--is-connected`, so they kept calling `--connect` on devices that were already
 connected. The script now treats a device as connected if it appears in
@@ -57,6 +72,11 @@ the background check off and use only the hotkey:
 launchctl bootout gui/$(id -u)/com.easyswitch-reconnect
 rm ~/Library/LaunchAgents/com.easyswitch-reconnect.plist
 ```
+
+The automatic Bluetooth power cycle will also briefly drop AirPods and any
+other active Bluetooth devices. If that trade-off isn't right for you, disable
+the automatic cycle (`AUTO_BT_CYCLE_AFTER=0 ./install.sh`) and rely on the
+hotkey instead.
 
 ### Input lag (manual only)
 
@@ -96,8 +116,13 @@ Optional settings (pass them to the installer):
 | `INTERVAL` | `5` | seconds between status checks |
 | `BACKOFF_MAX` | `30` | longest wait between connect attempts for a missing device |
 | `CONNECT_TIMEOUT` | `15` | seconds before a single connect attempt is stopped (4s was too short: the keyboard never reconnected) |
+| `AUTO_BT_CYCLE_AFTER` | `2` | consecutive failed `--connect` attempts (per device) before the watcher automatically power-cycles Bluetooth to break the Easy-Switch stuck state. Set to `0` to disable this fallback entirely. |
+| `BT_CYCLE_COOLDOWN` | `60` | minimum seconds between two automatic Bluetooth power cycles. Protects AirPods etc. from thrashing. |
+| `RECENT_SEEN_WINDOW` | `900` | only auto-cycle Bluetooth if the device was connected within this many seconds. Prevents cycling for keyboards that are simply out of range. |
 
-Example: `BACKOFF_MAX=60 ./install.sh`
+Example: `AUTO_BT_CYCLE_AFTER=1 BT_CYCLE_COOLDOWN=30 ./install.sh` for a more
+aggressive recovery, or `AUTO_BT_CYCLE_AFTER=0 ./install.sh` to keep the
+watcher strictly non-disruptive (no automatic cycling).
 
 On first run macOS may ask for Bluetooth permission. Allow it.
 
@@ -137,8 +162,9 @@ Create a script command or hotkey that runs `~/.local/bin/easyswitch-reconnect.s
 
 ## Troubleshooting
 
-- Check the log: `cat /tmp/easyswitch-reconnect.err` (connect attempts and reconnects)
-- See devices and backoff: `~/.local/bin/easyswitch-reconnect.sh --status`
+- Check the log: `cat /tmp/easyswitch-reconnect.err` (connect attempts, reconnects,
+  and automatic Bluetooth cycles).
+- See devices, backoff, and last automatic cycle: `~/.local/bin/easyswitch-reconnect.sh --status`
 - Check the agent is loaded: `launchctl print gui/$(id -u)/com.easyswitch-reconnect`
 - See what's connected: `blueutil --connected`
 - Input lags after switching back: see [Input lag](#input-lag-manual-only).
